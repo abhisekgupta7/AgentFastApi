@@ -14,17 +14,21 @@ def _rows_to_list(result) -> List[Dict[str, Any]]:
 
 @tool
 def get_overdue_customers(days: int, org_id: str) -> Any:
-    """Get customers who haven't paid in X days for a specific organization."""
+    """Get customers with pending orders older than X days for a specific organization."""
     engine = get_engine()
     sql = text(
         """
-        SELECT c.name, SUM(i.amount) AS total_due
+        SELECT c.id, c.name, c.email,
+             COUNT(o.id) AS overdue_order_count,
+             SUM(o."totalAmount") AS total_due,
+             MAX(o."createdAt") AS last_order_date
         FROM customers c
-        JOIN invoices i ON c.id = i.customer_id
-        WHERE c.organizationId = :org_id
-        AND i.status = 'unpaid'
-        AND i.due_date < NOW() - (:days || ' days')::interval
-        GROUP BY c.name
+         JOIN orders o ON c.id = o."customerId"
+         WHERE c."organizationId" = :org_id
+        AND o.status = 'PENDING'
+         AND o."createdAt" < NOW() - (:days || ' days')::interval
+        GROUP BY c.id, c.name, c.email
+        ORDER BY total_due DESC
         """
     )
     try:
@@ -46,7 +50,7 @@ def get_top_selling_products(limit: int = 5, org_id: str | None = None) -> Any:
             SELECT p.name, SUM(oi.quantity) AS total_sold
             FROM products p
             JOIN order_items oi ON p.id = oi.product_id
-            WHERE p.organizationId = :org_id
+            WHERE p."organizationId" = :org_id
             GROUP BY p.name
             ORDER BY total_sold DESC
             LIMIT :limit
@@ -82,20 +86,20 @@ def get_revenue_summary(period: str, org_id: str) -> Any:
     if period == "last_month":
         sql = text(
             """
-            SELECT DATE_TRUNC('month', createdAt) as period, SUM(totalAmount) as revenue
-            FROM orders
-            WHERE organizationId = :org_id
-            AND createdAt >= DATE_TRUNC('month', NOW() - INTERVAL '1 month')
+            SELECT DATE_TRUNC('month', o."createdAt") as period, SUM(o."totalAmount") as revenue
+            FROM orders o
+            WHERE o."organizationId" = :org_id
+            AND o."createdAt" >= DATE_TRUNC('month', NOW() - INTERVAL '1 month')
             GROUP BY period
             """
         )
     elif period == "last_quarter":
         sql = text(
             """
-            SELECT DATE_TRUNC('quarter', createdAt) as period, SUM(totalAmount) as revenue
-            FROM orders
-            WHERE organizationId = :org_id
-            AND createdAt >= DATE_TRUNC('quarter', NOW() - INTERVAL '1 quarter')
+            SELECT DATE_TRUNC('quarter', o."createdAt") as period, SUM(o."totalAmount") as revenue
+            FROM orders o
+            WHERE o."organizationId" = :org_id
+            AND o."createdAt" >= DATE_TRUNC('quarter', NOW() - INTERVAL '1 quarter')
             GROUP BY period
             """
         )
@@ -113,21 +117,23 @@ def get_revenue_summary(period: str, org_id: str) -> Any:
 
 @tool
 def get_default_risk_customers(org_id: str) -> Any:
-    """Compute customers in `org_id` with unpaid invoices older than 30 days.
+    """Compute customers in `org_id` with pending orders older than 30 days.
 
-    Returns a list of dicts: {id, name, total_due, unpaid_count, last_due_date} ordered by total_due desc.
+    Returns a list of dicts: {id, name, email, total_due, overdue_order_count, last_order_date} ordered by total_due desc.
     """
     engine = get_engine()
     sql = text(
         """
-        SELECT c.id, c.name, SUM(i.amount) AS total_due,
-               COUNT(i.*) AS unpaid_count, MAX(i.due_date) AS last_due_date
+        SELECT c.id, c.name, c.email,
+                             SUM(o."totalAmount") AS total_due,
+               COUNT(o.*) AS overdue_order_count,
+                             MAX(o."createdAt") AS last_order_date
         FROM customers c
-        JOIN invoices i ON c.id = i.customer_id
-        WHERE c.organizationId = :org_id
-          AND i.status = 'unpaid'
-          AND i.due_date < NOW() - INTERVAL '30 days'
-        GROUP BY c.id, c.name
+                JOIN orders o ON c.id = o."customerId"
+                WHERE c."organizationId" = :org_id
+          AND o.status = 'PENDING'
+                    AND o."createdAt" < NOW() - INTERVAL '30 days'
+        GROUP BY c.id, c.name, c.email
         ORDER BY total_due DESC
         """
     )

@@ -1,3 +1,5 @@
+import os
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 from tools import (
@@ -8,7 +10,7 @@ from tools import (
     get_default_risk_customers,
 )
 
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash")
 
 tools = [
     get_overdue_customers,

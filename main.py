@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 from agent import agent
 import json
@@ -29,6 +30,41 @@ def root():
 def health():
     return {"status": "ok"}
 
+
+def format_agent_error(error: Exception) -> str:
+    error_text = str(error)
+    lowered = error_text.lower()
+
+    if "429" in lowered or "quota" in lowered or "too many requests" in lowered or "resource_exhausted" in lowered:
+        return (
+            "Model quota is exhausted for the configured Gemini account. "
+            "Set GOOGLE_MODEL to a model your project can access, or enable billing / quota for the Google AI API."
+        )
+
+    return error_text
+
+
+def extract_chunk_text(content) -> str:
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if text:
+                    parts.append(str(text))
+            else:
+                text = getattr(item, "text", None) or getattr(item, "content", None)
+                if text:
+                    parts.append(str(text))
+        return "".join(parts)
+
+    return str(content) if content is not None else ""
+
 system_prompt_template = """
 You are a helpful assistant for a business's internal use. You have access to the following tools to assist you in answering questions:
 1. get_overdue_customers(days: int, org_id: str) - Get customers with overdue invoices for the provided organization.
@@ -51,13 +87,19 @@ async def chat(request: QueryRequest):
     async def event_stream():
         try:
             async for event in agent.astream_events(
-                {"messages": [{"system": system_prompt, "role": "user", "content": request.message}]},
+                {"messages": [SystemMessage(content=system_prompt), HumanMessage(content=request.message)]},
                 version="v2",
             ):
-                if event.get("event") == "on_chat_model_stream" and event.get("data", {}).get("chunk", {}).get("content"):
-                    yield f"data: {json.dumps({'text': event['data']['chunk'].content})}\n\n"
+                if event.get("event") != "on_chat_model_stream":
+                    continue
+
+                chunk = event.get("data", {}).get("chunk")
+                content = getattr(chunk, "content", None)
+                text = extract_chunk_text(content)
+                if text:
+                    yield f"data: {json.dumps({'text': text})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'error': format_agent_error(e)})}\n\n"
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
