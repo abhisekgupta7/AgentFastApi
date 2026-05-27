@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
-from agent import agent
+from agent import get_agent
 import json
 from fastapi.responses import JSONResponse
 
@@ -86,8 +86,8 @@ async def chat(request: QueryRequest):
 
     async def event_stream():
         try:
-            async for event in agent.astream_events(
-                {"messages": [SystemMessage(content=system_prompt), HumanMessage(content=request.message)]},
+            async for event in get_agent().astream_events(
+                {"messages": [{"system": system_prompt, "role": "user", "content": request.message}]},
                 version="v2",
             ):
                 if event.get("event") != "on_chat_model_stream":
