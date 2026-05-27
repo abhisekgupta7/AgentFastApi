@@ -8,8 +8,6 @@ from tools import (
     get_default_risk_customers,
 )
 
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
-
 tools = [
     get_overdue_customers,
     get_top_selling_products,
@@ -18,4 +16,12 @@ tools = [
     draft_payment_reminder,
 ]
 
-agent = create_react_agent(llm, tools)
+_agent = None
+
+
+def get_agent():
+    global _agent
+    if _agent is None:
+        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
+        _agent = create_react_agent(llm, tools)
+    return _agent
