@@ -87,7 +87,7 @@ async def chat(request: QueryRequest):
     async def event_stream():
         try:
             async for event in get_agent().astream_events(
-                {"messages": [{"system": system_prompt, "role": "user", "content": request.message}]},
+                {"messages": [SystemMessage(content=system_prompt), HumanMessage(content=request.message)]},
                 version="v2",
             ):
                 if event.get("event") != "on_chat_model_stream":

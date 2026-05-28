@@ -26,6 +26,6 @@ _agent = None
 def get_agent():
     global _agent
     if _agent is None:
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
+        llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite")
         _agent = create_react_agent(llm, tools)
     return _agent
