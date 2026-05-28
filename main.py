@@ -25,7 +25,7 @@ class QueryRequest(BaseModel):
 def root():
     return {"message": "Hello World"}
 
-
+#health check endpoint to verify server is running and can connect to Gemini API
 @app.get("/health")
 def health():
     return {"status": "ok"}
